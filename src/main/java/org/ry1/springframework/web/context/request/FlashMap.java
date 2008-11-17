@@ -21,19 +21,11 @@ public class FlashMap implements Map<String, Object> {
 	public void setKeepOnPut(boolean keepOnPut) {
 		this.keepOnPut = keepOnPut;
 	}
-	
-	/** Moves kept attributes to session at end of request. */
-	private final Runnable REQUEST_END_CALLBACK = new Runnable() {
-		public void run() {
-			onRequestEnd();
-		}
-	};
 
 	@SuppressWarnings("unchecked")
-	public void onRequestEnd() {
-		RequestAttributes requestAttributes = getRequestAttributes();
-		HashMap<String, Object> map = getMap();
-		HashSet<String> keysToKeep = getKeysToKeep();
+	public void onRequestEnd(RequestAttributes requestAttributes) {
+		HashMap<String, Object> map = getMap(requestAttributes);
+		HashSet<String> keysToKeep = getKeysToKeep(requestAttributes);
 		if (keysToKeep.size() > 0) {
 			HashMap<String, Object> kept;
 			synchronized (requestAttributes.getSessionMutex()) {
@@ -59,8 +51,7 @@ public class FlashMap implements Map<String, Object> {
 	 * request.
 	 */
 	@SuppressWarnings("unchecked")
-	private final HashMap<String, Object> getMap() {
-		RequestAttributes requestAttributes = getRequestAttributes();
+	private final HashMap<String, Object> getMap(RequestAttributes requestAttributes) {
 		HashMap<String, Object> result = (HashMap<String, Object>) requestAttributes.getAttribute(mapAttributeName, RequestAttributes.SCOPE_REQUEST);
 		
 		if (result == null) {
@@ -80,8 +71,7 @@ public class FlashMap implements Map<String, Object> {
 	}
 	
 	@SuppressWarnings("unchecked")
-	private final HashSet<String> getKeysToKeep() {
-		RequestAttributes requestAttributes = getRequestAttributes();
+	private final HashSet<String> getKeysToKeep(RequestAttributes requestAttributes) {
 		HashSet<String> result = (HashSet<String>) requestAttributes.getAttribute(keysToKeepAttributeName, RequestAttributes.SCOPE_REQUEST);
 		if (result == null) {
 			result = new HashSet<String>();
@@ -91,32 +81,33 @@ public class FlashMap implements Map<String, Object> {
 	}
 	
 	public void clear() {
-		getKeysToKeep().clear();
-		getMap().clear();
+		RequestAttributes requestAttributes = getRequestAttributes();
+		getKeysToKeep(requestAttributes).clear();
+		getMap(requestAttributes).clear();
 	}
 
 	public boolean containsKey(Object key) {
-		return getMap().containsKey(key);
+		return getMap(getRequestAttributes()).containsKey(key);
 	}
 
 	public boolean containsValue(Object value) {
-		return getMap().containsValue(value);
+		return getMap(getRequestAttributes()).containsValue(value);
 	}
 
 	public Set<java.util.Map.Entry<String, Object>> entrySet() {
-		return getMap().entrySet();
+		return getMap(getRequestAttributes()).entrySet();
 	}
 
 	public Object get(Object key) {
-		return getMap().get(key);
+		return getMap(getRequestAttributes()).get(key);
 	}
 
 	public boolean isEmpty() {
-		return getMap().isEmpty();
+		return getMap(getRequestAttributes()).isEmpty();
 	}
 
 	public Set<String> keySet() {
-		return getMap().keySet();
+		return getMap(getRequestAttributes()).keySet();
 	}
 
 	/** Sets a flash that will be kept available to the next request.
@@ -125,67 +116,82 @@ public class FlashMap implements Map<String, Object> {
 		if (keepOnPut) {
 			keep(key);
 		}
-		return getMap().put(key, value);
+		return getMap(getRequestAttributes()).put(key, value);
 	}
 
 	/** Set all flash entries to be kept available to the next request.
 	 */
 	public void putAll(Map<? extends String, ? extends Object> t) {
+		RequestAttributes requestAttributes = getRequestAttributes();
 		if (keepOnPut) {
-			getKeysToKeep().addAll(t.keySet());
-			registerCallback();
+			getKeysToKeep(requestAttributes).addAll(t.keySet());
+			registerCallback(requestAttributes);
 		}
-		getMap().putAll(t);
+		getMap(requestAttributes).putAll(t);
 	}
 	
 	/** Keeps the entire current flash available to the next request.
 	 */
 	public void keep() {
-		getKeysToKeep().addAll(getMap().keySet());
+		RequestAttributes requestAttributes = getRequestAttributes();
+		getKeysToKeep(requestAttributes).addAll(getMap(requestAttributes).keySet());
 	}
 	
 	/** Keeps a specific flash entry available to the next request.
 	 */
 	public void keep(String key) {
-		getKeysToKeep().add(key);
-		registerCallback();
+		RequestAttributes requestAttributes = getRequestAttributes();
+		getKeysToKeep(requestAttributes).add(key);
+		registerCallback(requestAttributes);
 	}
 	
 	/** Sets a flash that will not be available to the next request, only to the current.
 	 */
 	public void now(String key, Object value) {
-		getMap().put(key, value);
+		getMap(getRequestAttributes()).put(key, value);
 		discard(key);
 	}
 	
 	/** Marks the entire flash to be discarded by the end of the current request.
 	 */
 	public void discard() {
-		getKeysToKeep().clear();
+		getKeysToKeep(getRequestAttributes()).clear();
 	}
 	
 	/** Marks a single flash entry to be discarded by the end of the current request.
 	 * This is overridden by a call to {@link keep()}.
 	 */
 	public void discard(String key) {
-		getKeysToKeep().remove(key);
+		getKeysToKeep(getRequestAttributes()).remove(key);
 	}
 	
-	private void registerCallback() {
-		getRequestAttributes().registerDestructionCallback(onRequestEndCallbackAttributeName, REQUEST_END_CALLBACK, RequestAttributes.SCOPE_REQUEST);
+	private void registerCallback(RequestAttributes requestAttributes) {
+		requestAttributes.registerDestructionCallback(onRequestEndCallbackAttributeName, new FlashMapDestructionCallback(requestAttributes), RequestAttributes.SCOPE_REQUEST);
 	}
 
 	public Object remove(Object key) {
-		getKeysToKeep().remove(key);
-		return getMap().remove(key);
+		RequestAttributes requestAttributes = getRequestAttributes();
+		getKeysToKeep(requestAttributes).remove(key);
+		return getMap(requestAttributes).remove(key);
 	}
 
 	public int size() {
-		return getMap().size();
+		return getMap(getRequestAttributes()).size();
 	}
 
 	public Collection<Object> values() {
-		return getMap().values();
+		return getMap(getRequestAttributes()).values();
 	}
 
+	private final class FlashMapDestructionCallback implements Runnable {
+		private RequestAttributes requestAttributes;
+
+		public FlashMapDestructionCallback(RequestAttributes requestAttributes) {
+			this.requestAttributes = requestAttributes;
+		}
+		
+		public void run() {
+			onRequestEnd(requestAttributes);
+		}
+	}
 }
