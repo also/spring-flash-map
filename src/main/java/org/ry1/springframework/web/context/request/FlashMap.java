@@ -23,28 +23,32 @@ public class FlashMap implements Map<String, Object> {
 	}
 	
 	/** Moves kept attributes to session at end of request. */
-	private final Runnable REQUEST_END_CALLBACK = new Runnable(){
-		@SuppressWarnings("unchecked")
+	private final Runnable REQUEST_END_CALLBACK = new Runnable() {
 		public void run() {
-			RequestAttributes requestAttributes = getRequestAttributes();
-			HashMap<String, Object> map = getMap();
-			HashSet<String> keysToKeep = getKeysToKeep();
-			if (keysToKeep.size() > 0) {
-				HashMap<String, Object> kept;
-				synchronized (requestAttributes.getSessionMutex()) {
-					kept = (HashMap<String, Object>) requestAttributes.getAttribute(keptAttributeName, RequestAttributes.SCOPE_GLOBAL_SESSION);
-					if (kept == null) {
-						kept = new HashMap<String, Object>();
-						requestAttributes.setAttribute(keptAttributeName, kept, RequestAttributes.SCOPE_GLOBAL_SESSION);
-					}
-				}
-				for (String key : keysToKeep) {
-					Object value = map.get(key);
-					kept.put(key, value);
-				}
-			}
+			onRequestEnd();
 		}
 	};
+
+	@SuppressWarnings("unchecked")
+	public void onRequestEnd() {
+		RequestAttributes requestAttributes = getRequestAttributes();
+		HashMap<String, Object> map = getMap();
+		HashSet<String> keysToKeep = getKeysToKeep();
+		if (keysToKeep.size() > 0) {
+			HashMap<String, Object> kept;
+			synchronized (requestAttributes.getSessionMutex()) {
+				kept = (HashMap<String, Object>) requestAttributes.getAttribute(keptAttributeName, RequestAttributes.SCOPE_GLOBAL_SESSION);
+				if (kept == null) {
+					kept = new HashMap<String, Object>();
+					requestAttributes.setAttribute(keptAttributeName, kept, RequestAttributes.SCOPE_GLOBAL_SESSION);
+				}
+			}
+			for (String key : keysToKeep) {
+				Object value = map.get(key);
+				kept.put(key, value);
+			}
+		}
+	}
 	
 	private final RequestAttributes getRequestAttributes() {
 		return RequestContextHolder.getRequestAttributes();
